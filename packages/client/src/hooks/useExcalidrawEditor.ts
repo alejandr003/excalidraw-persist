@@ -96,7 +96,7 @@ export const useExcalidrawEditor = (
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [resourceId, readOnly, api]);
+  }, [resourceId, readOnly]);
 
   const saveScene = useCallback(
     async (elementsArray: ExcalidrawElement[], filesMap: BinaryFiles) => {

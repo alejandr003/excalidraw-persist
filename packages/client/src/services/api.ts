@@ -26,6 +26,8 @@ function extractErrorMessage(error: unknown): string {
 
 /** Retry a fetch-based operation up to `attempts` times with exponential backoff */
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelay = 800): Promise<T> {
+  if (attempts < 1) throw new Error('attempts must be at least 1');
+
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -35,7 +37,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelay = 800)
     } catch (err) {
       lastError = err;
       if (err instanceof Error) {
-        if (/^Request failed with status 4/.test(err.message)) {
+        if (/Request failed with status [45]/.test(err.message)) {
           throw err;
         }
         if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
@@ -47,15 +49,15 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseDelay = 800)
       }
     }
   }
-  throw lastError;
+  throw lastError ?? new Error('Request failed');
 }
 
 export const api = {
   async get<T>(endpoint: string): Promise<T> {
     return withRetry(async () => {
       const response = await fetch(`${API_BASE_URL}${endpoint}`);
+      if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
       const data: ApiResponse<T> = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Request failed');
       return (data.data ?? data) as T;
     });
   },
@@ -122,13 +124,15 @@ async function startHeartbeat(): Promise<void> {
 
   heartbeatInterval = setInterval(async () => {
     try {
-      await fetch(`${API_BASE_URL}/health`, {
+      const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         cache: 'no-cache',
       });
-      lastActivity = Date.now();
+      if (response.ok) {
+        lastActivity = Date.now();
+      }
     } catch {
-      lastActivity = Date.now();
+      // Network error - don't update lastActivity
     }
   }, HEARTBEAT_INTERVAL);
 }
