@@ -152,6 +152,25 @@ export function initializeSocketHandlers(io: Server): void {
       });
     });
 
+    socket.on('name-update', (payload: { boardId: string; userName: string }) => {
+      const { boardId, userName } = payload;
+      if (!boardId || !userName) return;
+
+      const room = getRoom(boardId);
+      if (!room) return;
+
+      const user = room.users.get(socket.id);
+      if (!user) return;
+
+      user.name = userName;
+
+      socket.to(boardId).emit('user-name-updated', {
+        userId: socket.data.userId,
+        name: userName,
+      });
+    });
+
+
     socket.on('cursor-move', (payload: CursorPayload) => {
       const { boardId, position, userId } = payload;
 

@@ -34,6 +34,13 @@ export const useSocketCollaboration = ({
   const [isConnected, setIsConnected] = useState(false);
   const [isRoomFull, setIsRoomFull] = useState(false);
 
+  // Keep userName in a ref so we can emit changes without reconnecting
+  const userNameRef = useRef(userName);
+  useEffect(() => {
+    userNameRef.current = userName;
+  }, [userName]);
+
+  // Socket setup — only re-runs when boardId, userId, or enabled changes
   useEffect(() => {
     if (!enabled || !boardId) return;
 
@@ -50,7 +57,7 @@ export const useSocketCollaboration = ({
 
     socket.on('connect', () => {
       setIsConnected(true);
-      socket.emit('join-room', { boardId, userId, userName });
+      socket.emit('join-room', { boardId, userId, userName: userNameRef.current });
     });
 
     socket.on('disconnect', () => {
@@ -72,6 +79,12 @@ export const useSocketCollaboration = ({
 
     socket.on('user-left', ({ userId: leftId }: { userId: string }) => {
       setCollaborators(prev => prev.filter(u => u.id !== leftId));
+    });
+
+    socket.on('user-name-updated', ({ userId: senderId, name }: { userId: string; name: string }) => {
+      setCollaborators(prev =>
+        prev.map(c => (c.id === senderId ? { ...c, name } : c))
+      );
     });
 
     socket.on('remote-scene-update', ({ elements, deletedIds, version, userId: senderId }: any) => {
@@ -100,7 +113,13 @@ export const useSocketCollaboration = ({
     return () => {
       socket.disconnect();
     };
-  }, [boardId, userId, userName, enabled, onRemoteUpdate, onRemoteSync]);
+  }, [boardId, userId, enabled, onRemoteUpdate, onRemoteSync]);
+
+  // Emit name change when userName changes (without reconnecting)
+  useEffect(() => {
+    if (!socketRef.current || !isConnected || !boardId) return;
+    socketRef.current.emit('name-update', { boardId, userName });
+  }, [userName, boardId, isConnected]);
 
   const emitUpdate = useCallback(
     Utils.debounce((elements: ExcalidrawElement[], deletedIds: string[]) => {
