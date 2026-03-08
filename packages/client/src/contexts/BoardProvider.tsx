@@ -89,11 +89,14 @@ export const BoardProvider: React.FC<BoardProviderProps> = ({ children }) => {
     }
   }, [navigate]);
 
+  const isArchivingRef = useRef(false);
+
   const handleArchiveBoard = useCallback(
     async (id: string) => {
       const boardToDelete = boards.find(b => b.id === id);
       if (!boardToDelete) return;
 
+      isArchivingRef.current = true;
       const previousBoards = boards;
       setBoards(prevBoards => prevBoards.filter(board => board.id !== id));
 
@@ -122,10 +125,13 @@ export const BoardProvider: React.FC<BoardProviderProps> = ({ children }) => {
       } catch (error) {
         logger.error(`Failed to move board ${id} to trash:`, error, true);
         setBoards(previousBoards);
+      } finally {
+        isArchivingRef.current = false;
       }
     },
     [boards, navigate, activeBoardId, handleCreateBoard, fetchBoards]
   );
+
 
   useEffect(() => {
     fetchBoards();
@@ -140,8 +146,10 @@ export const BoardProvider: React.FC<BoardProviderProps> = ({ children }) => {
       didAttemptInitialBoardCreation.current = false;
     }
     if (activeBoardId && boards.length > 0 && !boards.find(b => b.id === activeBoardId)) {
-      logger.warn('Invalid board id, navigating to last board', true);
-      navigate(`/board/${boards[boards.length - 1].id}`);
+      if (!isArchivingRef.current) {
+        logger.warn('Invalid board id, navigating to last board', true);
+        navigate(`/board/${boards[boards.length - 1].id}`);
+      }
     }
   }, [boards, isLoading, handleCreateBoard, activeBoardId, navigate]);
 
