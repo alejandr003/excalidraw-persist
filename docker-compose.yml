@@ -1,0 +1,22 @@
+services:
+  excalidraw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_WS_URL=http://localhost:4000
+        - VITE_API_URL=http://localhost:4000
+    ports:
+      - '4002:80'
+      - '4001:4000'
+    volumes:
+      - data:/app/data
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - DB_PATH=/app/data/database.sqlite
+    restart: unless-stopped
+
+volumes:
+  data:
+    driver: local

@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.pnpm-store
+.vscode
+.idea
+*.min.js
+*.svg
+*.json
+pnpm-lock.yaml 

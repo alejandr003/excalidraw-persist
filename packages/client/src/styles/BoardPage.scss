@@ -1,0 +1,39 @@
+.board-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+
+  .editor-container {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  &.loading {
+    // The Loader component itself handles centering and styling
+    // We just need to ensure the board-page container allows it to fill space
+    // height: 100vh; is already set above
+  }
+
+  &.error {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
+
+    .error-container {
+      padding: calc(5 * var(--space-factor));
+      text-align: center;
+
+      h2 {
+        color: var(--color-danger);
+        margin-bottom: calc(2.5 * var(--space-factor));
+      }
+
+      p {
+        color: var(--color-gray-70);
+        margin-bottom: calc(5 * var(--space-factor));
+      }
+    }
+  }
+}

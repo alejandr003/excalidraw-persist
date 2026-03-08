@@ -1,0 +1,139 @@
+@import './reset.scss';
+
+:root {
+  --ui-font: Assistant, system-ui, BlinkMacSystemFont, -apple-system, Segoe UI, Roboto, Helvetica,
+    Arial, sans-serif;
+  --space-factor: 0.25rem;
+  --border-radius-md: 0.375rem;
+  --border-radius-lg: 0.5rem;
+  --default-icon-size: 1rem;
+  --lg-icon-size: 1rem;
+  --default-button-size: 2rem;
+  --lg-button-size: 2.5rem;
+
+  /* Colors */
+  --color-primary: #6965db;
+  --color-on-surface: #1b1b1f;
+  --text-primary-color: var(--color-on-surface);
+  --icon-fill-color: var(--color-on-surface);
+  --default-bg-color: #ffffff;
+  --island-bg-color: #ffffff;
+  --link-color: #1c7ed6;
+  --color-surface-high: #f1f0ff;
+  --color-surface-mid: #f2f2f7;
+  --color-surface-low: #ececf4;
+  --color-surface-lowest: #ffffff;
+  --color-icon-white: #ffffff;
+  --color-gray-20: #ebebeb;
+  --color-gray-60: #7a7a7a;
+  --color-gray-70: #5c5c5c;
+  --color-danger: #db6965;
+  --color-success-contrast: #65bb6a;
+  --dialog-border-color: var(--color-gray-20);
+  --sidebar-border-color: var(--color-surface-high);
+  --button-gray-2: #ced4da;
+  --button-gray-3: #adb5bd;
+  --button-hover-bg: var(--color-surface-high);
+
+  /* Scrollbar */
+  --scrollbar-thumb: var(--button-gray-2);
+  --scrollbar-thumb-hover: var(--button-gray-3);
+
+  /* Shadows */
+  --shadow-island: 0px 0px 0.9310142993927002px 0px rgba(0, 0, 0, 0.17),
+    0px 0px 3.1270833015441895px 0px rgba(0, 0, 0, 0.08), 0px 7px 14px 0px rgba(0, 0, 0, 0.05);
+  --modal-shadow: 0px 100px 80px rgba(0, 0, 0, 0.07),
+    0px 41.7776px 33.4221px rgba(0, 0, 0, 0.0503198),
+    0px 22.3363px 17.869px rgba(0, 0, 0, 0.0417275), 0px 12.5216px 10.0172px rgba(0, 0, 0, 0.035),
+    0px 6.6501px 5.32008px rgba(0, 0, 0, 0.0282725),
+    0px 2.76726px 2.21381px rgba(0, 0, 0, 0.0196802);
+
+  /* Z-Index */
+  --zIndex-modal: 1000;
+}
+
+.theme--dark {
+  --theme-filter: invert(93%) hue-rotate(180deg);
+
+  /* Colors */
+  --color-primary: #a8a5ff;
+  --color-on-surface: #e3e3e8;
+  --text-primary-color: var(--color-on-surface);
+  --icon-fill-color: var(--color-on-surface);
+  --default-bg-color: #121212;
+  --island-bg-color: #232329;
+  --link-color: #4dabf7;
+  --color-surface-high: hsl(245, 10%, 21%);
+  --color-surface-mid: hsl(240 6% 10%);
+  --color-surface-low: hsl(240, 8%, 15%);
+  --color-surface-lowest: hsl(0, 0%, 7%);
+  --color-icon-white: var(--color-gray-90);
+  --color-gray-20: #272727;
+  --color-gray-60: #7a7a7a;
+  --color-gray-70: #999999;
+  --color-gray-80: #3d3d3d;
+  --color-gray-90: #1e1e1e;
+  --color-danger: #ffa8a5;
+  --color-success-contrast: #69db7c;
+  --dialog-border-color: var(--color-gray-80);
+  --sidebar-border-color: var(--color-surface-high);
+  --button-gray-2: #272727;
+  --button-gray-3: #222;
+  --button-hover-bg: var(--color-surface-high);
+
+  /* Scrollbar */
+  --scrollbar-thumb: #343a40;
+  --scrollbar-thumb-hover: #495057;
+
+  /* Shadows */
+  --shadow-island: 0px 0px 0.931px 0px rgba(0, 0, 0, 0.27), 0px 0px 3.127px 0px rgba(0, 0, 0, 0.18),
+    0px 7px 14px 0px rgba(0, 0, 0, 0.15);
+  --modal-shadow: 0px 100px 80px rgba(0, 0, 0, 0.17), 0px 41.77px 33.42px rgba(0, 0, 0, 0.15),
+    0px 22.33px 17.86px rgba(0, 0, 0, 0.14), 0px 12.52px 10.01px rgba(0, 0, 0, 0.13),
+    0px 6.65px 5.32px rgba(0, 0, 0, 0.12), 0px 2.76px 2.21px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--ui-font);
+  color: var(--text-primary-color);
+  background-color: var(--default-bg-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+a {
+  color: var(--link-color);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
