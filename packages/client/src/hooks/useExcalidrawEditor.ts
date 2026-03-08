@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type { BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import { ElementService, type BoardSceneData, type DeltaPayload } from '../services/elementService';
 import { ShareService } from '../services/shareService';
 import Utils from '../utils';
 import logger from '../utils/logger';
+import { api as apiClient } from '../services/api';
 
 interface EditorApi {
   getElements: (id: string) => Promise<BoardSceneData>;
@@ -36,10 +37,13 @@ interface UseExcalidrawEditorOptions {
   readOnly?: boolean;
 }
 
-export const useExcalidrawEditor = (boardIdOrOptions: string | undefined | UseExcalidrawEditorOptions) => {
-  const options: UseExcalidrawEditorOptions = typeof boardIdOrOptions === 'object' && boardIdOrOptions !== null
-    ? boardIdOrOptions
-    : { boardId: boardIdOrOptions ?? undefined };
+export const useExcalidrawEditor = (
+  boardIdOrOptions: string | undefined | UseExcalidrawEditorOptions
+) => {
+  const options: UseExcalidrawEditorOptions =
+    typeof boardIdOrOptions === 'object' && boardIdOrOptions !== null
+      ? boardIdOrOptions
+      : { boardId: boardIdOrOptions ?? undefined };
 
   const { boardId, shareId, readOnly } = options;
   const resourceId = shareId || boardId;
@@ -51,6 +55,48 @@ export const useExcalidrawEditor = (boardIdOrOptions: string | undefined | UseEx
   const prevVersionsRef = useRef<Map<string, number>>(new Map());
   const needsFullSyncRef = useRef(false);
   const isSavingRef = useRef(false);
+  const lastActiveTimeRef = useRef<number>(Date.now());
+  const wasHiddenRef = useRef(false);
+
+  useEffect(() => {
+    if (!resourceId || readOnly) return;
+
+    apiClient.startHeartbeat();
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        wasHiddenRef.current = true;
+        lastActiveTimeRef.current = Date.now();
+      } else if (wasHiddenRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        if (timeAway > 120000) {
+          needsFullSyncRef.current = true;
+          logger.info('User returned after being away, will force full sync');
+        }
+        wasHiddenRef.current = false;
+      }
+    };
+
+    const handleFocus = () => {
+      if (wasHiddenRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        if (timeAway > 120000) {
+          needsFullSyncRef.current = true;
+          logger.info('Window gained focus after being away, will force full sync');
+        }
+        wasHiddenRef.current = false;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      apiClient.stopHeartbeat();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [resourceId, readOnly, api]);
 
   const saveScene = useCallback(
     async (elementsArray: ExcalidrawElement[], filesMap: BinaryFiles) => {
@@ -129,7 +175,8 @@ export const useExcalidrawEditor = (boardIdOrOptions: string | undefined | UseEx
         }
         prevVersionsRef.current = newVersions;
       } catch (error) {
-        logger.error('Error saving scene data:', error, true);
+        needsFullSyncRef.current = true; // force full replace on next successful save
+        logger.error('Error saving scene data:', apiClient.extractErrorMessage(error), true);
       } finally {
         isSavingRef.current = false;
       }
