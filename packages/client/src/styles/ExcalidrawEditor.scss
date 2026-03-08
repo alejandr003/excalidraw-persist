@@ -28,6 +28,7 @@
         font-weight: 600;
         border: 2px solid white;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        cursor: default;
       }
     }
 
@@ -47,6 +48,28 @@
         color: #991b1b;
       }
     }
+
+    .collab-username-input {
+      flex: 0 1 140px;
+      border: none;
+      border-bottom: 1px dashed #adb5bd;
+      background: transparent;
+      font-size: 12px;
+      font-family: inherit;
+      color: #495057;
+      padding: 2px 4px;
+      outline: none;
+      text-align: center;
+
+      &::placeholder {
+        color: #adb5bd;
+        font-style: italic;
+      }
+
+      &:focus {
+        border-bottom-color: #495057;
+      }
+    }
   }
 
   .excalidraw-container {
@@ -60,3 +83,44 @@
     }
   }
 }
+
+// Remote cursor overlay — sits on top of the canvas, no pointer events
+.remote-cursors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.remote-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  // Smooth cursor movement
+  transition: transform 80ms linear;
+  will-change: transform;
+
+  .remote-cursor-arrow {
+    display: block;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  }
+
+  .remote-cursor-label {
+    margin-top: 2px;
+    margin-left: 4px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    background-color: var(--cursor-color, #6c63ff);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    letter-spacing: 0.01em;
+  }
+}
+
