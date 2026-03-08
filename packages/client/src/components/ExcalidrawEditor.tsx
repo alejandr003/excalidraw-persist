@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Excalidraw, useHandleLibrary } from '@excalidraw/excalidraw';
 import type {
   ExcalidrawImperativeAPI,
@@ -54,6 +54,8 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
 
   const isCollaborationEnabled = (!!boardId || !!shareId) && !readOnly;
 
+  const prevEmittedElementsRef = useRef<Map<string, number>>(new Map());
+
   const handleRemoteUpdate = useCallback(
     (newElements: ExcalidrawElement[], deletedIds: string[]) => {
       if (!excalidrawAPI) return;
@@ -76,13 +78,16 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
 
       excalidrawAPI.updateScene({ elements: updated as any });
       setElements(updated);
+      initializeVersionTracking(updated);
 
+      // Keep emit-tracking in sync so we don't re-broadcast remote changes
       const versions = new Map<string, number>();
       for (const el of updated) {
         versions.set(el.id, el.version);
       }
+      prevEmittedElementsRef.current = versions;
     },
-    [excalidrawAPI, setElements]
+    [excalidrawAPI, setElements, initializeVersionTracking]
   );
 
   const handleRemoteSync = useCallback(
@@ -91,6 +96,12 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
       excalidrawAPI.updateScene({ elements: newElements as any });
       setElements(newElements);
       initializeVersionTracking(newElements);
+
+      const versions = new Map<string, number>();
+      for (const el of newElements) {
+        versions.set(el.id, el.version);
+      }
+      prevEmittedElementsRef.current = versions;
     },
     [excalidrawAPI, setElements, initializeVersionTracking]
   );
@@ -136,19 +147,35 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
         setAppTheme(appState.theme);
       }
 
-      if (isCollaborationEnabled && isConnected && excalidrawAPI) {
-        const prevElements = excalidrawAPI.getSceneElements();
-        const prevIds = new Set(prevElements.map(e => e.id));
+      if (isCollaborationEnabled && isConnected) {
+        const prev = prevEmittedElementsRef.current;
+        const currentIds = new Set<string>();
+        const upserted: ExcalidrawElement[] = [];
 
-        const upserted = [...updatedElements].filter(
-          el =>
-            !prevIds.has(el.id) ||
-            prevElements.find(e => e.id === el.id && e.version !== el.version)
-        );
-        const deletedIds = [...prevIds].filter(id => !updatedElements.find(e => e.id === id));
+        for (const el of updatedElements) {
+          currentIds.add(el.id);
+          const prevVersion = prev.get(el.id);
+          if (prevVersion === undefined || prevVersion !== el.version) {
+            upserted.push(el as ExcalidrawElement);
+          }
+        }
+
+        const deletedIds: string[] = [];
+        for (const id of prev.keys()) {
+          if (!currentIds.has(id)) {
+            deletedIds.push(id);
+          }
+        }
 
         if (upserted.length > 0 || deletedIds.length > 0) {
-          emitUpdate(upserted as ExcalidrawElement[], deletedIds);
+          // Update tracking BEFORE emitting so next onChange sees the new baseline
+          const newVersions = new Map<string, number>();
+          for (const el of updatedElements) {
+            newVersions.set(el.id, el.version);
+          }
+          prevEmittedElementsRef.current = newVersions;
+
+          emitUpdate(upserted, deletedIds);
         }
       }
     },
@@ -158,7 +185,6 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
       setAppTheme,
       isCollaborationEnabled,
       isConnected,
-      excalidrawAPI,
       emitUpdate,
     ]
   );
