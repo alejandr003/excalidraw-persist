@@ -17,6 +17,7 @@ import { useTheme } from '../contexts/ThemeProvider';
 import { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import logger from '../utils/logger';
 import { LibraryService } from '../services/libraryService';
+import { getOrCreateUserName, setUserName } from '../utils/randomName';
 
 interface ExcalidrawEditorProps {
   boardId?: string;
@@ -37,9 +38,17 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     return newId;
   }, []);
 
-  const userName = useMemo(() => {
-    return localStorage.getItem('excalidraw-user-name') || `User ${userId.slice(0, 4)}`;
-  }, [userId]);
+  // Random Canva-style name, persisted in localStorage — user can override it
+  const [userName, setUserNameState] = useState<string>(() => getOrCreateUserName());
+
+  const handleUserNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setUserNameState(e.target.value);
+  }, []);
+
+  const handleUserNameBlur = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    const saved = setUserName(e.target.value);
+    setUserNameState(saved);
+  }, []);
 
   const {
     excalidrawAPI,
@@ -55,6 +64,13 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
   const isCollaborationEnabled = (!!boardId || !!shareId) && !readOnly;
 
   const prevEmittedElementsRef = useRef<Map<string, number>>(new Map());
+
+  // Track appState scroll/zoom for cursor coordinate conversion
+  const appStateRef = useRef<{ scrollX: number; scrollY: number; zoom: number }>({
+    scrollX: 0,
+    scrollY: 0,
+    zoom: 1,
+  });
 
   const handleRemoteUpdate = useCallback(
     (newElements: ExcalidrawElement[], deletedIds: string[]) => {
@@ -80,7 +96,6 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
       setElements(updated);
       initializeVersionTracking(updated);
 
-      // Keep emit-tracking in sync so we don't re-broadcast remote changes
       const versions = new Map<string, number>();
       for (const el of updated) {
         versions.set(el.id, el.version);
@@ -110,6 +125,8 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     collaborators: socketCollaborators,
     isConnected,
     emitUpdate,
+    emitCursor,
+    requestSync,
   } = useSocketCollaboration({
     boardId: shareId || boardId || '',
     userId,
@@ -118,6 +135,13 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     onRemoteSync: handleRemoteSync,
     enabled: isCollaborationEnabled,
   });
+
+  // Request a full sync once we connect and the API is ready
+  useEffect(() => {
+    if (isConnected && excalidrawAPI) {
+      requestSync();
+    }
+  }, [isConnected, excalidrawAPI, requestSync]);
 
   useEffect(() => {
     setCollaborators(socketCollaborators);
@@ -128,12 +152,32 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     [setExcalidrawAPI]
   );
 
+  // Throttle cursor emit to ~30fps
+  const lastCursorEmitRef = useRef(0);
+  const handlePointerUpdate = useCallback(
+    (payload: { pointer: { x: number; y: number } }) => {
+      if (!isCollaborationEnabled || !isConnected) return;
+      const now = Date.now();
+      if (now - lastCursorEmitRef.current < 33) return; // ~30fps
+      lastCursorEmitRef.current = now;
+      emitCursor({ x: payload.pointer.x, y: payload.pointer.y });
+    },
+    [isCollaborationEnabled, isConnected, emitCursor]
+  );
+
   const handleChange = useCallback(
     (
       updatedElements: readonly ExcalidrawElement[],
       appState: AppState,
       updatedFiles: BinaryFiles | null
     ) => {
+      // Keep scroll/zoom in sync for cursor conversion
+      appStateRef.current = {
+        scrollX: appState.scrollX,
+        scrollY: appState.scrollY,
+        zoom: appState.zoom.value,
+      };
+
       if (
         updatedElements.length === 0 &&
         (!updatedFiles || Object.keys(updatedFiles).length === 0)
@@ -168,13 +212,11 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
         }
 
         if (upserted.length > 0 || deletedIds.length > 0) {
-          // Update tracking BEFORE emitting so next onChange sees the new baseline
           const newVersions = new Map<string, number>();
           for (const el of updatedElements) {
             newVersions.set(el.id, el.version);
           }
           prevEmittedElementsRef.current = newVersions;
-
           emitUpdate(upserted, deletedIds);
         }
       }
@@ -271,6 +313,15 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     fetchBoardElements();
   }, [fetchBoardElements]);
 
+  // Convert canvas coordinates → screen coordinates for cursor overlay
+  const toScreenPos = useCallback((canvasX: number, canvasY: number) => {
+    const { scrollX, scrollY, zoom } = appStateRef.current;
+    return {
+      x: (canvasX + scrollX) * zoom,
+      y: (canvasY + scrollY) * zoom,
+    };
+  }, []);
+
   if (isLoading) {
     return (
       <div className="excalidraw-editor">
@@ -309,6 +360,17 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
               </div>
             ))}
           </div>
+          <input
+            className="collab-username-input"
+            type="text"
+            value={userName}
+            onChange={handleUserNameChange}
+            onBlur={handleUserNameBlur}
+            placeholder="Your name..."
+            maxLength={32}
+            title="Click to change your display name"
+          />
+
           <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? `${collaborators.length + 1} online` : 'Connecting...'}
           </div>
@@ -325,6 +387,7 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
             },
           }}
           onChange={handleChange}
+          onPointerUpdate={handlePointerUpdate}
           viewModeEnabled={readOnly}
           name={`Board: ${resourceId}`}
           excalidrawAPI={handleExcalidrawAPI}
@@ -337,6 +400,44 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
             },
           }}
         />
+
+        {/* Remote cursor overlay */}
+        {isCollaborationEnabled && (
+          <div className="remote-cursors" aria-hidden="true">
+            {collaborators
+              .filter(c => c.cursor)
+              .map(collab => {
+                const screen = toScreenPos(collab.cursor!.x, collab.cursor!.y);
+                return (
+                  <div
+                    key={collab.id}
+                    className="remote-cursor"
+                    style={{
+                      transform: `translate(${screen.x}px, ${screen.y}px)`,
+                      '--cursor-color': collab.color,
+                    } as React.CSSProperties}
+                  >
+                    <svg
+                      className="remote-cursor-arrow"
+                      width="16"
+                      height="20"
+                      viewBox="0 0 16 20"
+                      fill="none"
+                    >
+                      <path
+                        d="M0 0L0 16L4.5 11.5L7 18L9 17.5L6.5 11H12L0 0Z"
+                        fill={collab.color}
+                        stroke="white"
+                        strokeWidth="1.2"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <span className="remote-cursor-label">{collab.name}</span>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     </div>
   );
