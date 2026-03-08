@@ -50,14 +50,22 @@ function getRoom(boardId: string): Room | undefined {
 }
 
 const COLORS = [
-  '#f87171',
-  '#fb923c',
-  '#fbbf24',
-  '#4ade80',
-  '#60a5fa',
-  '#a78bfa',
-  '#c084fc',
-  '#f472b6',
+  '#f87171', // red
+  '#fb923c', // orange
+  '#fbbf24', // amber
+  '#4ade80', // green
+  '#34d399', // emerald
+  '#22d3ee', // cyan
+  '#60a5fa', // blue
+  '#818cf8', // indigo
+  '#a78bfa', // violet
+  '#c084fc', // purple
+  '#f472b6', // pink
+  '#e879f9', // fuchsia
+  '#2dd4bf', // teal
+  '#a3e635', // lime
+  '#fb7185', // rose
+  '#38bdf8', // sky
 ];
 
 export function initializeSocketHandlers(io: Server): void {
@@ -79,7 +87,10 @@ export function initializeSocketHandlers(io: Server): void {
         return;
       }
 
-      const color = COLORS[room.users.size % COLORS.length];
+      const usedColors = new Set(Array.from(room.users.values()).map(u => u.color));
+      const available = COLORS.filter(c => !usedColors.has(c));
+      const pool = available.length > 0 ? available : COLORS;
+      const color = pool[Math.floor(Math.random() * pool.length)];
 
       room.users.set(socket.id, {
         id: userId,
