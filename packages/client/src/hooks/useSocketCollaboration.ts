@@ -37,7 +37,7 @@ export const useSocketCollaboration = ({
   useEffect(() => {
     if (!enabled || !boardId) return;
 
-    const wsUrl = import.meta.env.VITE_WS_URL || '/socket.io/';
+    const wsUrl = import.meta.env.VITE_WS_URL || window.location.origin;
     const socket = io(wsUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
