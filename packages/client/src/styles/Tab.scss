@@ -78,3 +78,58 @@
     display: none;
   }
 }
+
+.tab-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.tab-confirm-dialog {
+  background: var(--island-bg-color);
+  border: 1px solid var(--color-surface-highest);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 260px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+  p {
+    margin: 0 0 16px;
+    font-size: 0.9rem;
+    color: var(--text-primary-color);
+  }
+}
+
+.tab-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+
+  button {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: opacity 0.15s;
+
+    &:hover {
+      opacity: 0.85;
+    }
+  }
+}
+
+.tab-confirm-cancel {
+  background: var(--color-surface-highest);
+  color: var(--text-primary-color);
+}
+
+.tab-confirm-ok {
+  background: var(--color-danger, #e03131);
+  color: #fff;
+}
