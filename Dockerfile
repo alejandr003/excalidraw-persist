@@ -10,7 +10,7 @@ FROM base AS builder
 WORKDIR /app
 
 # Build arguments for environment variables
-ARG VITE_WS_URL=http://localhost:4000
+ARG VITE_WS_URL=/socket.io/
 ARG VITE_API_URL=http://localhost:4000
 
 # Pass build args to environment
