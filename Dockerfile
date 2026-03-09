@@ -10,11 +10,11 @@ FROM base AS builder
 WORKDIR /app
 
 # Build arguments for environment variables
-ARG VITE_WS_URL=/socket.io/
-ARG VITE_API_URL=http://localhost:4000
+# VITE_WS_URL intentionally omitted — the client uses window.location.origin
+# so it works correctly behind any proxy (nginx, Cloudflare Tunnel, local IP)
+ARG VITE_API_URL=/api
 
 # Pass build args to environment
-ENV VITE_WS_URL=$VITE_WS_URL
 ENV VITE_API_URL=$VITE_API_URL
 
 # Install build dependencies for sqlite3

@@ -50,7 +50,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VITE_WS_URL=/socket.io/
             VITE_API_URL=/api
           # Layer caching via GitHub Actions cache — speeds up rebuilds significantly
           cache-from: type=gha

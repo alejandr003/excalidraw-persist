@@ -44,8 +44,9 @@ export const useSocketCollaboration = ({
   useEffect(() => {
     if (!enabled || !boardId) return;
 
-    const wsUrl = import.meta.env.VITE_WS_URL || window.location.origin;
-    const socket = io(wsUrl, {
+    // Always connect to the same origin as the frontend (nginx proxies /socket.io/ to the backend).
+    // Using window.location.origin ensures correct behaviour behind any proxy or tunnel.
+    const socket = io(window.location.origin, {
       // Start with polling — works reliably through Cloudflare Tunnel and any HTTP proxy.
       // Socket.IO will automatically upgrade to WebSocket once polling is established.
       transports: ['polling', 'websocket'],
