@@ -58,8 +58,8 @@ const startServer = async () => {
     await runMigrations();
     logger.info('Migrations complete');
 
-    httpServer.listen(PORT, () => {
-      logger.info(`Server is running on http://localhost:${PORT}`);
+    httpServer.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Server is running on http://0.0.0.0:${PORT}`);
     });
 
     process.on('SIGINT', async () => {
