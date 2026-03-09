@@ -4,6 +4,7 @@ import type {
   ExcalidrawImperativeAPI,
   AppState,
   BinaryFiles,
+  BinaryFileData,
   LibraryItems,
 } from '@excalidraw/excalidraw/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -61,8 +62,59 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     setExcalidrawAPI,
     handleChange: onSceneChange,
     initializeVersionTracking,
+    initializeFiles,
+    startHeartbeat,
     syncStatus,
   } = useExcalidrawEditor({ boardId, shareId, readOnly });
+
+  // Heartbeat
+  useEffect(() => {
+    return startHeartbeat();
+  }, [startHeartbeat]);
+
+  // Re-fetch from server when user returns after a long absence (>2 min).
+  // This ensures the latest DB state (including images) is loaded instead of
+  // pushing potentially stale/empty client state to the server.
+  const wasHiddenRef = useRef(false);
+  const lastActiveTimeRef = useRef<number>(Date.now());
+  useEffect(() => {
+    if (!boardId && !shareId) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        wasHiddenRef.current = true;
+        lastActiveTimeRef.current = Date.now();
+      } else if (wasHiddenRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        wasHiddenRef.current = false;
+        if (timeAway > 120_000) {
+          fetchBoardElements();
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      if (wasHiddenRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        wasHiddenRef.current = false;
+        if (timeAway > 120_000) {
+          fetchBoardElements();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  // fetchBoardElements is stable (wrapped in useCallback with stable deps)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, shareId]);
+
+  // Hidden file input for importing .excalidraw files
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const isCollaborationEnabled = (!!boardId || !!shareId) && !readOnly;
 
@@ -214,6 +266,61 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     }
   }, [excalidrawAPI, boardId]);
 
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click();
+  }, []);
+
+  const handleImportFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!excalidrawAPI || !boardId) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // Reset input so the same file can be re-imported if needed
+      e.target.value = '';
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        if (parsed.type !== 'excalidraw' || !Array.isArray(parsed.elements)) {
+          logger.error('Import failed: not a valid .excalidraw file', null, true);
+          return;
+        }
+
+        const importedElements = parsed.elements ?? [];
+        // Files can be stored as an array (export format) or as an object map
+        const filesArray: BinaryFileData[] = Array.isArray(parsed.files)
+          ? parsed.files
+          : Object.values(parsed.files ?? {});
+        const importedFiles: BinaryFiles = {};
+        for (const f of filesArray) {
+          if (f?.id) importedFiles[f.id] = f;
+        }
+
+        if (
+          !window.confirm(
+            `Importar "${file.name}" reemplazará todos los elementos de esta pizarra. ¿Continuar?`
+          )
+        ) {
+          return;
+        }
+
+        // Save to server
+        await ElementService.replaceAllElements(boardId, { elements: importedElements, files: importedFiles });
+
+        // Update local scene
+        excalidrawAPI.updateScene({ elements: importedElements as any });
+        setElements(importedElements);
+        setFiles(importedFiles);
+        initializeVersionTracking(importedElements);
+        initializeFiles(importedFiles);
+      } catch (error) {
+        logger.error('Error importing .excalidraw file:', error, true);
+      }
+    },
+    [excalidrawAPI, boardId, setElements, setFiles, initializeVersionTracking, initializeFiles]
+  );
+
   const handleChange = useCallback(
     (
       updatedElements: readonly ExcalidrawElement[],
@@ -333,23 +440,27 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
         : await ElementService.getBoardElements(resourceId);
       if (fetchedScene) {
         const loadedElements = fetchedScene.elements || [];
+        const loadedFiles = fetchedScene.files || {};
         setElements(loadedElements);
-        setFiles(fetchedScene.files || {});
+        setFiles(loadedFiles);
         initializeVersionTracking(loadedElements);
+        initializeFiles(loadedFiles);
       } else {
         setElements([]);
         setFiles({});
         initializeVersionTracking([]);
+        initializeFiles({});
       }
     } catch (error) {
       logger.error('Error fetching board scene:', error, true);
       setElements([]);
       setFiles({});
       initializeVersionTracking([]);
+      initializeFiles({});
     } finally {
       setIsLoading(false);
     }
-  }, [boardId, shareId, setElements, setFiles, initializeVersionTracking]);
+  }, [boardId, shareId, setElements, setFiles, initializeVersionTracking, initializeFiles]);
 
   useEffect(() => {
     fetchBoardElements();
@@ -419,18 +530,40 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
             </div>
             <div className={`save-status-badge ${showSavedBadge ? 'visible' : ''}`}>Saved</div>
             {boardId && !readOnly && (
-              <button
-                className="action-btn action-btn--header"
-                onClick={handleDownloadExcalidraw}
-                title="Export as .excalidraw file"
-              >
-                <img
-                  src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbiA9InJvdW5kIj48cGF0aCBkPSJNMTIgMTVWMyIvPjxwYXRoIGQ9Ik0yMSAxNXY0YTIgMiAwIDAxLTIgMkg1YTIgMiAwIDAxLTItMnYtNCIvPjxwYXRoIGQ9Im03IDEwIDUgNS01LTUiLz48L3N2Zz4="
-                  alt="Export"
-                  width="16"
-                  height="16"
+              <>
+                <button
+                  className="action-btn action-btn--header"
+                  onClick={handleImportClick}
+                  title="Import .excalidraw file into this board"
+                >
+                  {/* Upload / import icon */}
+                  <img
+                    src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbiA9InJvdW5kIj48cGF0aCBkPSJNMjEgMTV2NGEyIDIgMCAwMS0yIDJINWEyIDIgMCAwMS0yLTJ2LTQiLz48cGF0aCBkPSJtMTcgOC01LTUtNSA1Ii8+PHBhdGggZD0iTTEyIDN2MTIiLz48L3N2Zz4="
+                    alt="Import"
+                    width="16"
+                    height="16"
+                  />
+                </button>
+                <button
+                  className="action-btn action-btn--header"
+                  onClick={handleDownloadExcalidraw}
+                  title="Export as .excalidraw file"
+                >
+                  <img
+                    src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbiA9InJvdW5kIj48cGF0aCBkPSJNMTIgMTVWMyIvPjxwYXRoIGQ9Ik0yMSAxNXY0YTIgMiAwIDAxLTIgMkg1YTIgMiAwIDAxLTItMnYtNCIvPjxwYXRoIGQ9Im03IDEwIDUgNS01LTUiLz48L3N2Zz4="
+                    alt="Export"
+                    width="16"
+                    height="16"
+                  />
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".excalidraw,.json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportFile}
                 />
-              </button>
+              </>
             )}
           </div>
         </div>

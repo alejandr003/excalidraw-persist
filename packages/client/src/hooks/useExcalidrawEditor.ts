@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import type { BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import { ElementService, type BoardSceneData, type DeltaPayload } from '../services/elementService';
@@ -55,55 +55,27 @@ export const useExcalidrawEditor = (
   const prevVersionsRef = useRef<Map<string, number>>(new Map());
   const needsFullSyncRef = useRef(false);
   const isSavingRef = useRef(false);
-  const lastActiveTimeRef = useRef<number>(Date.now());
-  const wasHiddenRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  useEffect(() => {
+  // Accumulates ALL files ever seen (from DB load + newly pasted/added).
+  // Excalidraw's onChange `files` param only contains NEWLY ADDED files in that render cycle,
+  // not the full set. This ref is the source of truth for file uploads.
+  const allFilesRef = useRef<BinaryFiles>({});
+
+  const startHeartbeat = useCallback(() => {
     if (!resourceId || readOnly) return;
-
     apiClient.startHeartbeat();
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        wasHiddenRef.current = true;
-        lastActiveTimeRef.current = Date.now();
-      } else if (wasHiddenRef.current) {
-        const timeAway = Date.now() - lastActiveTimeRef.current;
-        if (timeAway > 120000) {
-          needsFullSyncRef.current = true;
-          logger.info('User returned after being away, will force full sync');
-        }
-        wasHiddenRef.current = false;
-      }
-    };
-
-    const handleFocus = () => {
-      if (wasHiddenRef.current) {
-        const timeAway = Date.now() - lastActiveTimeRef.current;
-        if (timeAway > 120000) {
-          needsFullSyncRef.current = true;
-          logger.info('Window gained focus after being away, will force full sync');
-        }
-        wasHiddenRef.current = false;
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      apiClient.stopHeartbeat();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
+    return () => apiClient.stopHeartbeat();
   }, [resourceId, readOnly]);
 
   const saveScene = useCallback(
-    async (elementsArray: ExcalidrawElement[], filesMap: BinaryFiles) => {
+    async (elementsArray: ExcalidrawElement[]) => {
       if (!resourceId || readOnly || isSavingRef.current) return;
       isSavingRef.current = true;
       setSyncStatus('saving');
+
+      // Always use the accumulated files ref — not the partial filesMap from onChange
+      const filesMap = allFilesRef.current;
 
       try {
         // Upload new files first
@@ -119,13 +91,12 @@ export const useExcalidrawEditor = (
           }
         }
 
-        // Full sync fallback
+        // Full sync fallback (triggered when a delta save previously failed)
         if (needsFullSyncRef.current) {
           await api.replaceAllElements(resourceId, {
             elements: elementsArray,
             files: filesMap,
           });
-          // Reset tracking
           const newVersions = new Map<string, number>();
           for (const el of elementsArray) {
             newVersions.set(el.id, el.version);
@@ -166,7 +137,7 @@ export const useExcalidrawEditor = (
           await api.saveDelta(resourceId, { upserted, deleted });
           setSyncStatus('saved');
         } catch {
-          // Delta failed — fall back to full replace next time
+          // Delta failed — fall back to full replace
           needsFullSyncRef.current = true;
           await api.replaceAllElements(resourceId, {
             elements: elementsArray,
@@ -185,7 +156,7 @@ export const useExcalidrawEditor = (
         setSyncStatus('saved');
       } catch (error) {
         setSyncStatus('error');
-        needsFullSyncRef.current = true; // force full replace on next successful save
+        needsFullSyncRef.current = true;
         logger.error('Error saving scene data:', apiClient.extractErrorMessage(error), true);
       } finally {
         isSavingRef.current = false;
@@ -200,8 +171,8 @@ export const useExcalidrawEditor = (
   const debouncedSaveRef = useRef<ReturnType<typeof Utils.debounce>>();
   if (!debouncedSaveRef.current) {
     debouncedSaveRef.current = Utils.debounce(
-      (elems: ExcalidrawElement[], filesMap: BinaryFiles) => {
-        saveSceneRef.current(elems, filesMap);
+      (elems: ExcalidrawElement[]) => {
+        saveSceneRef.current(elems);
       },
       500
     );
@@ -210,13 +181,18 @@ export const useExcalidrawEditor = (
   const handleChange = useCallback(
     (excalidrawElements: readonly ExcalidrawElement[], excalidrawFiles: BinaryFiles | null) => {
       const elementsArray = [...excalidrawElements];
-      const filesMap: BinaryFiles = excalidrawFiles ? { ...excalidrawFiles } : {};
+
+      // Merge new files into accumulated store. Never overwrite with empty —
+      // Excalidraw's onChange only passes newly added files, not the full set.
+      if (excalidrawFiles && Object.keys(excalidrawFiles).length > 0) {
+        allFilesRef.current = { ...allFilesRef.current, ...excalidrawFiles };
+      }
 
       setElements(elementsArray);
-      setFiles(filesMap);
+      setFiles({ ...allFilesRef.current });
 
       if (resourceId && !readOnly) {
-        debouncedSaveRef.current!(elementsArray, filesMap);
+        debouncedSaveRef.current!(elementsArray);
       }
     },
     [resourceId, readOnly]
@@ -231,6 +207,12 @@ export const useExcalidrawEditor = (
     needsFullSyncRef.current = false;
   }, []);
 
+  // Called once when board elements are loaded from the server.
+  // Seeds allFilesRef with the authoritative file set from the DB.
+  const initializeFiles = useCallback((loadedFiles: BinaryFiles) => {
+    allFilesRef.current = { ...loadedFiles };
+  }, []);
+
   return {
     elements,
     setElements,
@@ -240,6 +222,8 @@ export const useExcalidrawEditor = (
     setExcalidrawAPI,
     handleChange,
     initializeVersionTracking,
+    initializeFiles,
+    startHeartbeat,
     syncStatus,
   };
 };

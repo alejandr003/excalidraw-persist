@@ -173,11 +173,16 @@ export const elementController = {
 
       try {
         await ElementModel.replaceAll(boardId, elements, { db, useTransaction: false });
-        await FileModel.replaceAll(boardId, files, { db, useTransaction: false });
         await db.run('COMMIT');
       } catch (transactionError) {
         await db.run('ROLLBACK');
         throw transactionError;
+      }
+
+      // Files are content-addressed (ID = hash of content) — never delete existing files.
+      // Use INSERT OR IGNORE so previously stored images survive a full sync with empty filesMap.
+      if (Object.keys(files).length > 0) {
+        await FileModel.upsertMany(boardId, files);
       }
 
       await BoardModel.update(boardId, {});
