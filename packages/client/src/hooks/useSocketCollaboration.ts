@@ -46,10 +46,14 @@ export const useSocketCollaboration = ({
 
     const wsUrl = import.meta.env.VITE_WS_URL || window.location.origin;
     const socket = io(wsUrl, {
-      transports: ['websocket', 'polling'],
+      // Start with polling — works reliably through Cloudflare Tunnel and any HTTP proxy.
+      // Socket.IO will automatically upgrade to WebSocket once polling is established.
+      transports: ['polling', 'websocket'],
+      upgrade: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       path: '/socket.io/',
     });
 

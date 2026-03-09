@@ -18,6 +18,14 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST'],
   },
   maxHttpBufferSize: 1e8,
+  // Accept both transports to match client configuration.
+  // polling is the reliable baseline through proxies (Cloudflare Tunnel, nginx).
+  // WebSocket is used as the upgrade once polling establishes the connection.
+  transports: ['polling', 'websocket'],
+  // Ping every 10s, allow 5s for the pong response.
+  // Keeps the connection alive through Cloudflare Tunnel idle timeouts.
+  pingInterval: 10000,
+  pingTimeout: 5000,
 });
 
 initializeSocketHandlers(io);
