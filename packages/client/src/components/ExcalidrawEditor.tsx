@@ -19,6 +19,7 @@ import logger from '../utils/logger';
 import { LibraryService } from '../services/libraryService';
 import { getOrCreateUserName, setUserName } from '../utils/randomName';
 
+
 interface ExcalidrawEditorProps {
   boardId?: string;
   shareId?: string;
@@ -29,6 +30,7 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { theme: currentAppTheme, setTheme: setAppTheme } = useTheme();
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [showSavedBadge, setShowSavedBadge] = useState(false);
 
   const userId = useMemo(() => {
     const stored = localStorage.getItem('excalidraw-user-id');
@@ -59,9 +61,20 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     setExcalidrawAPI,
     handleChange: onSceneChange,
     initializeVersionTracking,
+    syncStatus,
   } = useExcalidrawEditor({ boardId, shareId, readOnly });
 
   const isCollaborationEnabled = (!!boardId || !!shareId) && !readOnly;
+
+  useEffect(() => {
+    if (syncStatus === 'saved') {
+      setShowSavedBadge(true);
+      const timer = setTimeout(() => {
+        setShowSavedBadge(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [syncStatus]);
 
   const prevEmittedElementsRef = useRef<Map<string, number>>(new Map());
 
@@ -165,6 +178,42 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
     [isCollaborationEnabled, isConnected, emitCursor]
   );
 
+  const handleDownloadExcalidraw = useCallback(async () => {
+    if (!excalidrawAPI || !boardId) return;
+    try {
+      const elements = excalidrawAPI.getSceneElements();
+      const files = excalidrawAPI.getFiles();
+      const appState = excalidrawAPI.getAppState();
+
+      const data = JSON.stringify(
+        {
+          type: 'excalidraw',
+          version: 2,
+          elements,
+          files: Object.values(files),
+          appState: {
+            ...appState,
+            exportWithDragScale: true,
+          },
+        },
+        null,
+        2
+      );
+
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${boardId}.excalidraw`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      logger.error('Error exporting to Excalidraw format:', error, true);
+    }
+  }, [excalidrawAPI, boardId]);
+
   const handleChange = useCallback(
     (
       updatedElements: readonly ExcalidrawElement[],
@@ -221,14 +270,7 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
         }
       }
     },
-    [
-      onSceneChange,
-      currentAppTheme,
-      setAppTheme,
-      isCollaborationEnabled,
-      isConnected,
-      emitUpdate,
-    ]
+    [onSceneChange, currentAppTheme, setAppTheme, isCollaborationEnabled, isConnected, emitUpdate]
   );
 
   const libraryAdapter = useMemo(() => {
@@ -371,11 +413,29 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
             title="Click to change your display name"
           />
 
-          <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-            {isConnected ? `${collaborators.length + 1} online` : 'Connecting...'}
+          <div className="status-indicators">
+            <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+              {isConnected ? `${collaborators.length + 1} online` : 'Connecting...'}
+            </div>
+            <div className={`save-status-badge ${showSavedBadge ? 'visible' : ''}`}>Saved</div>
+            {boardId && !readOnly && (
+              <button
+                className="action-btn action-btn--header"
+                onClick={handleDownloadExcalidraw}
+                title="Export as .excalidraw file"
+              >
+                <img
+                  src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbiA9InJvdW5kIj48cGF0aCBkPSJNMTIgMTVWMyIvPjxwYXRoIGQ9Ik0yMSAxNXY0YTIgMiAwIDAxLTIgMkg1YTIgMiAwIDAxLTItMnYtNCIvPjxwYXRoIGQ9Im03IDEwIDUgNS01LTUiLz48L3N2Zz4="
+                  alt="Export"
+                  width="16"
+                  height="16"
+                />
+              </button>
+            )}
           </div>
         </div>
       )}
+
       <div className="excalidraw-container relative">
         <Excalidraw
           key={resourceId}
@@ -401,6 +461,8 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
           }}
         />
 
+
+
         {/* Remote cursor overlay */}
         {isCollaborationEnabled && (
           <div className="remote-cursors" aria-hidden="true">
@@ -412,10 +474,12 @@ const ExcalidrawEditor = ({ boardId, shareId, readOnly }: ExcalidrawEditorProps)
                   <div
                     key={collab.id}
                     className="remote-cursor"
-                    style={{
-                      transform: `translate(${screen.x}px, ${screen.y}px)`,
-                      '--cursor-color': collab.color,
-                    } as React.CSSProperties}
+                    style={
+                      {
+                        transform: `translate(${screen.x}px, ${screen.y}px)`,
+                        '--cursor-color': collab.color,
+                      } as React.CSSProperties
+                    }
                   >
                     <svg
                       className="remote-cursor-arrow"

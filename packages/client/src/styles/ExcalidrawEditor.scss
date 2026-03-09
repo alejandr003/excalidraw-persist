@@ -49,6 +49,30 @@
       }
     }
 
+    .status-indicators {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .save-status-badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 500;
+      background: #d1fae5;
+      color: #065f46;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+
+      &.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+
     .collab-username-input {
       flex: 0 1 140px;
       border: none;
@@ -84,7 +108,81 @@
   }
 }
 
-// Remote cursor overlay — sits on top of the canvas, no pointer events
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: none;
+  cursor: pointer;
+  color: white;
+  transition: background 0.2s;
+  backdrop-filter: blur(4px);
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  img {
+    filter: brightness(0) invert(1);
+  }
+}
+
+.action-btn--header {
+  background: transparent;
+  backdrop-filter: none;
+  color: #495057;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  img {
+    filter: none;
+    opacity: 0.7;
+  }
+}
+
+
+.sync-status-bar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: white;
+    transition: background 0.2s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    img {
+      filter: brightness(0) invert(1);
+    }
+  }
+}
+
 .remote-cursors {
   position: absolute;
   inset: 0;
@@ -100,7 +198,6 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  // Smooth cursor movement
   transition: transform 80ms linear;
   will-change: transform;
 
@@ -123,4 +220,3 @@
     letter-spacing: 0.01em;
   }
 }
-

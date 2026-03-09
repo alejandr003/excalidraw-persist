@@ -57,6 +57,7 @@ export const useExcalidrawEditor = (
   const isSavingRef = useRef(false);
   const lastActiveTimeRef = useRef<number>(Date.now());
   const wasHiddenRef = useRef(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     if (!resourceId || readOnly) return;
@@ -102,6 +103,7 @@ export const useExcalidrawEditor = (
     async (elementsArray: ExcalidrawElement[], filesMap: BinaryFiles) => {
       if (!resourceId || readOnly || isSavingRef.current) return;
       isSavingRef.current = true;
+      setSyncStatus('saving');
 
       try {
         // Upload new files first
@@ -121,7 +123,7 @@ export const useExcalidrawEditor = (
         if (needsFullSyncRef.current) {
           await api.replaceAllElements(resourceId, {
             elements: elementsArray,
-            files: {},
+            files: filesMap,
           });
           // Reset tracking
           const newVersions = new Map<string, number>();
@@ -130,6 +132,7 @@ export const useExcalidrawEditor = (
           }
           prevVersionsRef.current = newVersions;
           needsFullSyncRef.current = false;
+          setSyncStatus('saved');
           return;
         }
 
@@ -154,18 +157,23 @@ export const useExcalidrawEditor = (
         }
 
         // Skip if nothing changed
-        if (upserted.length === 0 && deleted.length === 0) return;
+        if (upserted.length === 0 && deleted.length === 0) {
+          setSyncStatus('idle');
+          return;
+        }
 
         try {
           await api.saveDelta(resourceId, { upserted, deleted });
+          setSyncStatus('saved');
         } catch {
           // Delta failed — fall back to full replace next time
           needsFullSyncRef.current = true;
           await api.replaceAllElements(resourceId, {
             elements: elementsArray,
-            files: {},
+            files: filesMap,
           });
           needsFullSyncRef.current = false;
+          setSyncStatus('saved');
         }
 
         // Update tracking
@@ -174,7 +182,9 @@ export const useExcalidrawEditor = (
           newVersions.set(el.id, el.version);
         }
         prevVersionsRef.current = newVersions;
+        setSyncStatus('saved');
       } catch (error) {
+        setSyncStatus('error');
         needsFullSyncRef.current = true; // force full replace on next successful save
         logger.error('Error saving scene data:', apiClient.extractErrorMessage(error), true);
       } finally {
@@ -230,5 +240,6 @@ export const useExcalidrawEditor = (
     setExcalidrawAPI,
     handleChange,
     initializeVersionTracking,
+    syncStatus,
   };
 };
